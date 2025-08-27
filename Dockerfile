@@ -1,4 +1,3 @@
-# Dockerfile (key parts)
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -7,23 +6,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Install deps
 COPY requirements.txt .
-RUN python -m pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    python - <<'PY'
-import importlib
-for m in ("fastapi","uvicorn","gunicorn"):
-    importlib.import_module(m)
-print("OK: web deps present")
-PY
+RUN python -m pip install --upgrade pip \
+ && pip install --no-cache-dir -r requirements.txt \
+ && python -c "import importlib; [importlib.import_module(m) for m in ('fastapi','uvicorn','gunicorn')]; print('OK: web deps present')"
 
+# Copy source
 COPY . .
 
-# app/main.py exports `app`, so target app.main:app and bind to $PORT
+# Run FastAPI with Gunicorn+Uvicorn worker, bind to Cloud Run's $PORT
 CMD bash -lc 'exec gunicorn \
   --workers ${WEB_CONCURRENCY:-1} \
   --worker-class uvicorn.workers.UvicornWorker \
   --bind :${PORT:-8080} \
   --access-logfile - --error-logfile - --log-level debug \
-  --preload \
   app.main:app'
