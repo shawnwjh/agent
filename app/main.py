@@ -89,55 +89,49 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/health", response_model=HealthResponse)
-async def health_check():
-    """Health check endpoint"""
+critique_agent = None
+init_error = None
+
+@app.get("/healthz")
+def healthz():
+    # liveness-only
+    return {"status": "ok"}
+
+@app.get("/health")
+async def health():
+    services = {
+        "embedding_service": False,
+        "vector_db_service": False,
+        "reranker_service": False,
+        "nvidia_llm": False,
+    }
     try:
-        # Test service connections
-        services = {
-            "embedding_service": False,
-            "vector_db_service": False,
-            "reranker_service": False,
-            "nvidia_llm": False
-        }
-        
-        # Simple checks - could be enhanced
-        try:
-            response = await critique_agent.service_client.client.get(
-                f"{critique_agent.service_client.embedding_url}/health"
-            )
-            services["embedding_service"] = response.status_code == 200
-        except:
-            pass
-        
-        try:
-            response = await critique_agent.service_client.client.get(
-                f"{critique_agent.service_client.vector_db_url}/health"
-            )
-            services["vector_db_service"] = response.status_code == 200
-        except:
-            pass
-        
-        try:
-            response = await critique_agent.service_client.client.get(
-                f"{critique_agent.service_client.reranker_url}/health"
-            )
-            services["reranker_service"] = response.status_code == 200
-        except:
-            pass
-        
-        services["nvidia_llm"] = critique_agent.llm is not None
-        
-        return HealthResponse(
-            status="healthy" if all(services.values()) else "partial",
-            services_available=services,
-            agent_ready=critique_agent is not None,
-            memory_sessions=len(critique_agent.sessions) if critique_agent else 0
-        )
-        
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        if critique_agent:
+            services["nvidia_llm"] = getattr(critique_agent, "llm", None) is not None
+            sc = getattr(critique_agent, "service_client", None)
+            if sc and getattr(sc, "client", None):
+                try:
+                    r = await sc.client.get(f"{sc.embedding_url}/health")
+                    services["embedding_service"] = (r.status_code == 200)
+                except: pass
+                try:
+                    r = await sc.client.get(f"{sc.vector_db_url}/health")
+                    services["vector_db_service"] = (r.status_code == 200)
+                except: pass
+                try:
+                    r = await sc.client.get(f"{sc.reranker_url}/health")
+                    services["reranker_service"] = (r.status_code == 200)
+                except: pass
+    except Exception:
+        # never crash the health route
+        pass
+
+    return {
+        "status": "healthy" if all(services.values()) else "partial",
+        "services_available": services,
+        "agent_ready": critique_agent is not None,
+        "memory_sessions": len(getattr(critique_agent, "sessions", {})) if critique_agent else 0,
+    }
 
 @app.post("/critique", response_model=CritiqueResponse)
 async def critique_paper_endpoint(request: CritiqueRequest):
