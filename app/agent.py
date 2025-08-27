@@ -517,7 +517,7 @@ class PaperCritiqueAgent:
     async def chat(self, message: str, session_id: str, context: Optional[Dict] = None) -> str:
         """Handle conversational chat about papers, including uploaded documents"""
         import os
-        import PyPDF2
+        from pypdf import PdfReader
         agent = self._get_or_create_agent(session_id)
         document_texts = []
 
@@ -528,7 +528,7 @@ class PaperCritiqueAgent:
                 file_path = os.path.join("frontend", "public", "uploads", filename)
                 try:
                     with open(file_path, "rb") as f:
-                        reader = PyPDF2.PdfReader(f)
+                        reader = PdfReader(f)
                         text = ""
                         for page in reader.pages:
                             text += page.extract_text() or ""
